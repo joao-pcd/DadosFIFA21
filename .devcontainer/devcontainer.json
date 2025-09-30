@@ -1,0 +1,13 @@
+{
+    "name": "PySpark + MinIO",
+    "dockerComposeFile": "../docker-compose.yml",
+    "service": "pyspark",
+    "workspaceFolder": "/workspace",
+    "shutdownAction": "stopCompose",
+    "extensions":[
+        "ms-python.python",
+        "ms-toolsai.jupyter"
+    ]
+
+
+}
