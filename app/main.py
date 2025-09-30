@@ -8,7 +8,7 @@ secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
 spark = (
     SparkSession.builder
     .appName("DadosFIFA21-PySpark-MinIo")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")  # se rodar local
+    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
     .config("spark.hadoop.fs.s3a.access.key", access_key)
     .config("spark.hadoop.fs.s3a.secret.key", secret_key)
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
