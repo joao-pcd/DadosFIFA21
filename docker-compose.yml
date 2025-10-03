@@ -28,7 +28,7 @@ services:
     working_dir: /workspace
     depends_on:
       - minio
-    command: ["/bin/bash", "-c", "while sleep 1; do :; done"]
+    command: /bin/bash -c "python3 app/main.py; while sleep 1; do :; done"
   
 volumes:
   minio_data:
