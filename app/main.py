@@ -19,7 +19,8 @@ spark = (
             "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
     .config("spark.jars.packages",
             "org.apache.hadoop:hadoop-aws:3.3.6,"
-            "com.amazonaws:aws-java-sdk-bundle:1.12.508")
+            "com.amazonaws:aws-java-sdk-bundle:1.12.508,"
+            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.0")
     .getOrCreate()
 )
 
@@ -88,13 +89,110 @@ df = spark.read.format("csv")\
 print("\nImprime os dados do Kaggle:")
 print(df.show(5))
 
-print("\nImprime o schema:")
+print("\nImprime o schema raiz:")
+print(df.printSchema())
+
+for coluna in df.columns:
+    nova_coluna = coluna.lower()
+    if " " in coluna or "&" in coluna or "/" in coluna or "↓" in coluna:
+        nova_coluna = nova_coluna.replace(" ","_").replace("&","and").replace("/","_").replace("↓","")
+    df = df.withColumnRenamed(coluna, nova_coluna)
+
+print("\nImprime o schema formatado:")
 print(df.printSchema())
 
 print("\nSalvando os arquivos como parquet na camada SOR...")
 df.write.format("parquet")\
         .mode("overwrite")\
-        .save("s3a://"+bucket_name+"/sor/df-fifa21-parquet-file.parquet")
+        .save(f"s3a://{bucket_name}/sor/df-fifa21-parquet-file.parquet")
 print("\nArquivos salvos com sucesso!")
+
+query = f"""
+    CREATE TABLE nessie.default.fifa21_sor
+    USING iceberg
+    PARTITIONED BY (team_and_contract) -- Defina a coluna de partição
+    AS
+    SELECT
+        photourl,
+        longname,
+        playerurl,
+        nationality,
+        positions,
+        name,
+        age,
+        ova,
+        pot,
+        team_and_contract,
+        id,
+        height,
+        weight,
+        foot,
+        bov,
+        bp,
+        growth,
+        joined,
+        loan_date_end,
+        value,
+        wage,
+        release_clause,
+        attacking,
+        crossing,
+        finishing,
+        heading_accuracy,
+        short_passing,
+        volleys,
+        skill,
+        dribbling,
+        curve,
+        fk_accuracy,
+        long_passing,
+        ball_control,
+        movement,
+        acceleration,
+        sprint_speed,
+        agility,
+        reactions,
+        balance,
+        power,
+        shot_power,
+        jumping,
+        stamina,
+        strength,
+        long_shots,
+        mentality,
+        aggression,
+        interceptions,
+        positioning,
+        vision,
+        penalties,
+        composure,
+        defending,
+        marking,
+        standing_tackle,
+        sliding_tackle,
+        goalkeeping,
+        gk_diving,
+        gk_handling,
+        gk_kicking,
+        gk_positioning,
+        gk_reflexes,
+        total_stats,
+        base_stats,
+        w_f,
+        sm,
+        a_w,
+        d_w,
+        ir,
+        pac,
+        sho,
+        pas,
+        dri,
+        def,
+        phy,
+        hits
+    FROM parquet.`s3a://{bucket_name}/sor/` -- Lê os dados do seu Parquet no MinIO
+"""
+
+df = spark.sql(query)
 
 spark.stop()
