@@ -10,17 +10,28 @@ secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
 spark = (
     SparkSession.builder
     .appName("DadosFIFA21-PySpark-MinIo")
+
     .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
     .config("spark.hadoop.fs.s3a.access.key", access_key)
     .config("spark.hadoop.fs.s3a.secret.key", secret_key)
     .config("spark.hadoop.fs.s3a.path.style.access", "True")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-    .config("spark.hadoop.fs.s3a.aws.credentials.provider",
-            "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
+    .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
+
     .config("spark.jars.packages",
-            "org.apache.hadoop:hadoop-aws:3.3.6,"
-            "com.amazonaws:aws-java-sdk-bundle:1.12.508,"
-            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.0")
+            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.0,"
+            "org.projectnessie.nessie-integrations:nessie-spark-extensions-3.5_2.12:0.104.5")
+
+    .config("spark.sql.extensions", 
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,"
+            "org.projectnessie.spark.extensions.NessieSparkSessionExtensions")
+
+    .config("spark.sql.catalog.nessie.uri", "http://nessie:19120/api/v2") \
+    .config("spark.sql.catalog.nessie.ref", "main") \
+    .config("spark.sql.catalog.nessie.authentication.type", "NONE") \
+    .config("spark.sql.catalog.nessie.catalog-impl", "org.apache.iceberg.nessie.NessieCatalog") \
+    .config("spark.sql.catalog.nessie.warehouse", "s3a://dados-fifa21/iceberg/") \
+    .config("spark.sql.catalog.nessie", "org.apache.iceberg.spark.SparkCatalog") \
     .getOrCreate()
 )
 
@@ -101,16 +112,29 @@ for coluna in df.columns:
 print("\nImprime o schema formatado:")
 print(df.printSchema())
 
-print("\nSalvando os arquivos como parquet na camada SOR...")
+print("\nSalvando os arquivos como parquet na camada raw...")
 df.write.format("parquet")\
         .mode("overwrite")\
-        .save(f"s3a://{bucket_name}/sor/df-fifa21-parquet-file.parquet")
+        .save(f"s3a://{bucket_name}/raw/df-fifa21-parquet-file.parquet")
 print("\nArquivos salvos com sucesso!")
 
-query = f"""
-    CREATE TABLE nessie.default.fifa21_sor
+df_parquet = spark.read.parquet(f"s3a://{bucket_name}/raw/df-fifa21-parquet-file.parquet")
+df_parquet.createOrReplaceTempView("tb_fifa21_raw")
+
+try:
+    spark.sql("CREATE NAMESPACE nessie.fifa21")
+    print("Namespace nessie.fifa21 criado com sucesso.")
+except Exception as e:
+    # Handle the case if the namespace already exists or other errors
+    if "Namespace already exists" in str(e):
+        print("Namespace nessie.fifa21 já existe.")
+    else:
+        print(f"Erro ao criar namespace: {e}")
+
+create_query = f"""
+    CREATE TABLE nessie.fifa21.tb_sor
     USING iceberg
-    PARTITIONED BY (team_and_contract) -- Defina a coluna de partição
+    PARTITIONED BY (team_and_contract) 
     AS
     SELECT
         photourl,
@@ -190,9 +214,94 @@ query = f"""
         def,
         phy,
         hits
-    FROM parquet.`s3a://{bucket_name}/sor/` -- Lê os dados do seu Parquet no MinIO
+    FROM tb_fifa21_raw
 """
+spark.sql(create_query)
 
-df = spark.sql(query)
+
+# Código para sobrescrever (usado em todas as execuções)
+overwrite_query = f"""
+    INSERT OVERWRITE nessie.fifa21.tb_sor
+    SELECT
+        photourl,
+        longname,
+        playerurl,
+        nationality,
+        positions,
+        name,
+        age,
+        ova,
+        pot,
+        team_and_contract,
+        id,
+        height,
+        weight,
+        foot,
+        bov,
+        bp,
+        growth,
+        joined,
+        loan_date_end,
+        value,
+        wage,
+        release_clause,
+        attacking,
+        crossing,
+        finishing,
+        heading_accuracy,
+        short_passing,
+        volleys,
+        skill,
+        dribbling,
+        curve,
+        fk_accuracy,
+        long_passing,
+        ball_control,
+        movement,
+        acceleration,
+        sprint_speed,
+        agility,
+        reactions,
+        balance,
+        power,
+        shot_power,
+        jumping,
+        stamina,
+        strength,
+        long_shots,
+        mentality,
+        aggression,
+        interceptions,
+        positioning,
+        vision,
+        penalties,
+        composure,
+        defending,
+        marking,
+        standing_tackle,
+        sliding_tackle,
+        goalkeeping,
+        gk_diving,
+        gk_handling,
+        gk_kicking,
+        gk_positioning,
+        gk_reflexes,
+        total_stats,
+        base_stats,
+        w_f,
+        sm,
+        a_w,
+        d_w,
+        ir,
+        pac,
+        sho,
+        pas,
+        dri,
+        def,
+        phy,
+        hits
+    FROM tb_fifa21_raw
+"""
+df = spark.sql(overwrite_query)
 
 spark.stop()
