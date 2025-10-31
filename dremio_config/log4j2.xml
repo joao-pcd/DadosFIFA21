@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Configuration status="WARN">
+<Appenders>
+<Console name="Console" target="SYSTEM_OUT">
+<PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+</Console>
+</Appenders>
+<Loggers>
+<!-- Loggers específicos, se existirem, podem ser deixados em WARN ou ERROR se necessário -->
+<!-- Exemplo:
+<Logger name="com.dremio.exec.rpc" level="WARN" additivity="false">
+<AppenderRef ref="Console"/>
+</Logger>
+-->
+</Loggers>
+<Root level="ERROR"> <!-- ALTERADO DE WARN PARA ERROR -->
+<AppenderRef ref="Console"/>
+</Root>
+</Configuration>

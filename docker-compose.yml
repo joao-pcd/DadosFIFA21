@@ -35,6 +35,27 @@ services:
    container_name: nessie
    ports:
      - "19120:19120"
-  
+  dremio:
+    image: dremio/dremio-oss:latest
+    container_name: dremio
+    # Portas para acesso externo (UI e JDBC/ODBC)
+    ports:
+      - "9047:9047" # Web UI (Acessar: http://localhost:9047)
+      - "32010:32010"
+    environment:
+      # Definindo a memória Heap, ajuste conforme a RAM disponível na sua máquina
+      DREMIO_MAX_HEAP_MEMORY_SIZE_MB: 4096 
+    volumes:
+      # Volumes para persistir dados e configurações do Dremio
+      - dremio_data:/opt/dremio/data
+      - dremio_conf:/opt/dremio/conf
+      - ./dremio_config/log4j2.xml:/opt/dremio/conf/log4j2.xml
+    depends_on:
+      # Dremio precisa do Nessie (Catálogo) e do MinIO (Armazenamento)
+      - nessie
+      - minio  
+      
 volumes:
   minio_data:
+  dremio_data:
+  dremio_conf:
