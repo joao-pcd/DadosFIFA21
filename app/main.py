@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import regexp_replace, col
 from minio import Minio
 import os
-import kagglehub
 import re
 
 access_key = os.environ.get("AWS_ACCESS_KEY_ID")
@@ -11,6 +11,7 @@ spark = (
     SparkSession.builder
     .appName("DadosFIFA21-PySpark-MinIo")
 
+    .config("spark.sql.parquet.compression.codec", "snappy")
     .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
     .config("spark.hadoop.fs.s3a.access.key", access_key)
     .config("spark.hadoop.fs.s3a.secret.key", secret_key)
@@ -35,7 +36,7 @@ spark = (
     .getOrCreate()
 )
 
-spark.sparkContext.setLogLevel("INFO")
+spark.sparkContext.setLogLevel("ERROR")
 
 def parse_time_to_ms(value):
     if isinstance(value, str):
@@ -81,45 +82,36 @@ else:
     print("\nBucket", bucket_name, "já existe")
 
 
-print("\nListando todos os buckets encontrados:")
-buckets = client.list_buckets()
-for bucket in buckets:
-    print("Bucket name: ", bucket.name)
-
-
-# Download latest version
-path = kagglehub.dataset_download("yagunnersya/fifa-21-messy-raw-dataset-for-cleaning-exploring")
-
-print("\nPath to dataset files:", path)
-
-df = spark.read.format("csv")\
-    .option("header", "True")\
-    .option("inferSchema","True")\
-    .csv(path)
-
-print("\nImprime os dados do Kaggle:")
-print(df.show(5))
-
-print("\nImprime o schema raiz:")
-print(df.printSchema())
+df = (
+    spark.read
+    .option("header", True)
+    .option("multiLine", True)  
+    .option("escape", "\"")      
+    .csv("/workspace/dados/fifa21 raw data v2.csv")
+    .repartition(20)
+)
 
 for coluna in df.columns:
-    nova_coluna = coluna.lower()
-    if " " in coluna or "&" in coluna or "/" in coluna or "↓" in coluna:
-        nova_coluna = nova_coluna.replace(" ","_").replace("&","and").replace("/","_").replace("↓","")
-    df = df.withColumnRenamed(coluna, nova_coluna)
+    df = df.withColumn(coluna, regexp_replace(col(coluna), "[\r\n]", ""))
 
-print("\nImprime o schema formatado:")
+df = df.withColumnRenamed("↓OVA", "OVA")
+
+for coluna in df.columns:
+    df = df.withColumnRenamed(coluna, coluna.lower().replace('/', '_').replace(' ', '_'))
+
+print("\nImprime os dados do DF:")
+print(df.show(5)) 
+
+print("\nImprime o schema:")
 print(df.printSchema())
 
 print("\nSalvando os arquivos como parquet na camada raw...")
 df.write.format("parquet")\
         .mode("overwrite")\
-        .save(f"s3a://{bucket_name}/raw/df-fifa21-parquet-file.parquet")
+        .save(f"s3a://{bucket_name}/raw/df-fifa21-parquet/")
 print("\nArquivos salvos com sucesso!")
 
-df_parquet = spark.read.parquet(f"s3a://{bucket_name}/raw/df-fifa21-parquet-file.parquet")
-df_parquet.createOrReplaceTempView("tb_fifa21_raw")
+df_parquet = spark.read.parquet(f"s3a://{bucket_name}/raw/df-fifa21-parquet/")
 
 try:
     spark.sql("CREATE NAMESPACE nessie.fifa21")
@@ -131,177 +123,11 @@ except Exception as e:
     else:
         print(f"Erro ao criar namespace: {e}")
 
-create_query = f"""
-    CREATE TABLE nessie.fifa21.tb_sor
-    USING iceberg
-    PARTITIONED BY (team_and_contract) 
-    AS
-    SELECT
-        photourl,
-        longname,
-        playerurl,
-        nationality,
-        positions,
-        name,
-        age,
-        ova,
-        pot,
-        team_and_contract,
-        id,
-        height,
-        weight,
-        foot,
-        bov,
-        bp,
-        growth,
-        joined,
-        loan_date_end,
-        value,
-        wage,
-        release_clause,
-        attacking,
-        crossing,
-        finishing,
-        heading_accuracy,
-        short_passing,
-        volleys,
-        skill,
-        dribbling,
-        curve,
-        fk_accuracy,
-        long_passing,
-        ball_control,
-        movement,
-        acceleration,
-        sprint_speed,
-        agility,
-        reactions,
-        balance,
-        power,
-        shot_power,
-        jumping,
-        stamina,
-        strength,
-        long_shots,
-        mentality,
-        aggression,
-        interceptions,
-        positioning,
-        vision,
-        penalties,
-        composure,
-        defending,
-        marking,
-        standing_tackle,
-        sliding_tackle,
-        goalkeeping,
-        gk_diving,
-        gk_handling,
-        gk_kicking,
-        gk_positioning,
-        gk_reflexes,
-        total_stats,
-        base_stats,
-        w_f,
-        sm,
-        a_w,
-        d_w,
-        ir,
-        pac,
-        sho,
-        pas,
-        dri,
-        def,
-        phy,
-        hits
-    FROM tb_fifa21_raw
-"""
-spark.sql(create_query)
 
+print("Salvando na tabela Iceberg 'nessie.fifa21.tb_sor'...")
 
-# Código para sobrescrever (usado em todas as execuções)
-overwrite_query = f"""
-    INSERT OVERWRITE nessie.fifa21.tb_sor
-    SELECT
-        photourl,
-        longname,
-        playerurl,
-        nationality,
-        positions,
-        name,
-        age,
-        ova,
-        pot,
-        team_and_contract,
-        id,
-        height,
-        weight,
-        foot,
-        bov,
-        bp,
-        growth,
-        joined,
-        loan_date_end,
-        value,
-        wage,
-        release_clause,
-        attacking,
-        crossing,
-        finishing,
-        heading_accuracy,
-        short_passing,
-        volleys,
-        skill,
-        dribbling,
-        curve,
-        fk_accuracy,
-        long_passing,
-        ball_control,
-        movement,
-        acceleration,
-        sprint_speed,
-        agility,
-        reactions,
-        balance,
-        power,
-        shot_power,
-        jumping,
-        stamina,
-        strength,
-        long_shots,
-        mentality,
-        aggression,
-        interceptions,
-        positioning,
-        vision,
-        penalties,
-        composure,
-        defending,
-        marking,
-        standing_tackle,
-        sliding_tackle,
-        goalkeeping,
-        gk_diving,
-        gk_handling,
-        gk_kicking,
-        gk_positioning,
-        gk_reflexes,
-        total_stats,
-        base_stats,
-        w_f,
-        sm,
-        a_w,
-        d_w,
-        ir,
-        pac,
-        sho,
-        pas,
-        dri,
-        def,
-        phy,
-        hits
-    FROM tb_fifa21_raw
-"""
-df = spark.sql(overwrite_query)
+df_parquet.writeTo("nessie.fifa21.tb_sor")\
+    .createOrReplace()      # Cria ou substitui a tabela
+
 
 spark.stop()
