@@ -4,7 +4,7 @@ USER root
 RUN rm -rf /root/.ivy2 /root/.m2 /root/.cache
 RUN apt-get update && apt-get install -y wget unzip python3-pip && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --upgrade pip \
-    && pip3 install pyspark kagglehub minio
+    && pip3 install pyspark minio
 
 # MinIo Client
 RUN wget https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/bin/mc && chmod +x /usr/bin/mc
